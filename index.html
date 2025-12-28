@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>EventLive</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #020617;
+      color: white;
+      text-align: center;
+      padding: 20px;
+    }
+    .live {
+      color: red;
+      font-weight: bold;
+    }
+    .box {
+      border: 1px solid #334155;
+      padding: 20px;
+      margin-top: 30px;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>EventLive</h1>
+  <p class="live">🔴 LIVE EVENT</p>
+
+  <div class="box">
+    <h2>Event ID</h2>
+    <p id="eventId"></p>
+
+    <p>Live video will appear here</p>
+    <p style="color:#94a3b8">(Streaming coming soon)</p>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const eventId = params.get("id");
+    document.getElementById("eventId").innerText =
+      eventId ? eventId : "Unknown Event";
+  </script>
+
+</body>
+</html>
