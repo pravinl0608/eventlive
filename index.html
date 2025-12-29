@@ -1,44 +1,56 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8" />
   <title>EventLive – Live Stream</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
   <style>
     body {
-      background: #000;
-      color: #fff;
+      margin: 0;
+      background: #020617;
+      color: white;
       font-family: Arial, sans-serif;
       text-align: center;
-      margin: 0;
-      padding: 0;
+    }
+    h2 {
+      margin-top: 16px;
+    }
+    .status {
+      margin-top: 6px;
+      color: #22c55e;
+      font-size: 14px;
     }
     video {
       width: 100%;
       max-width: 720px;
-      margin-top: 20px;
-      background: #000;
+      margin-top: 16px;
+      background: black;
+      border-radius: 10px;
     }
   </style>
 </head>
+
 <body>
 
 <h2>🔴 LIVE EVENT</h2>
-<video id="remoteVideo" autoplay playsinline controls></video>
+<div class="status" id="status">Connecting…</div>
+<video id="remoteVideo" autoplay playsinline></video>
 
-<!-- Firebase SDKs -->
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js"></script>
+<!-- ✅ Firebase COMPAT SDKs (IMPORTANT) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
-/* 🔥 REPLACE WITH YOUR FIREBASE WEB CONFIG */
+/* 🔥 FIREBASE CONFIG (PASTE YOUR REAL VALUES) */
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
-  projectId: "YOUR_PROJECT",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "XXXXXX",
-  appId: "XXXXXX"
+  apiKey: "AIzaSyCTJLIJjgKTrjBUMFQUw1-_W_2wtJGMKc",
+  authDomain: "eventlive-webrtc.firebaseapp.com",
+  databaseURL: "https://eventlive-webrtc-default-rtdb.firebaseio.com",
+  projectId: "eventlive-webrtc",
+  storageBucket: "eventlive-webrtc.firebasestorage.app",
+  messagingSenderId: "779925983608",
+  appId: "1:779925983608:web:d00b76dd38d69b04dc788d"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -50,9 +62,12 @@ const params = new URLSearchParams(window.location.search);
 const eventId = params.get("id");
 
 if (!eventId) {
-  alert("No event ID found");
+  document.getElementById("status").innerText = "No Event ID found";
   throw new Error("Missing event ID");
 }
+
+document.getElementById("status").innerText =
+  "Waiting for host (Event ID: " + eventId + ")";
 
 /* ---------------- WEBRTC ---------------- */
 
@@ -64,45 +79,41 @@ const video = document.getElementById("remoteVideo");
 
 pc.ontrack = (event) => {
   video.srcObject = event.streams[0];
+  document.getElementById("status").innerText = "Live stream connected";
 };
 
-/* ---------------- RECEIVE OFFER ---------------- */
-
-db.ref(`events/${eventId}/offer`).once("value").then(snapshot => {
-  const offer = snapshot.val();
-  if (!offer) {
-    alert("Event is not live yet");
-    return;
-  }
-
-  pc.setRemoteDescription(new RTCSessionDescription(offer))
-    .then(() => pc.createAnswer())
-    .then(answer => {
-      pc.setLocalDescription(answer);
-      return db.ref(`events/${eventId}/answer`).set(answer);
-    });
-});
-
-/* ---------------- SEND ICE TO ANDROID ---------------- */
+/* ---------------- SEND ICE (VIEWER → ANDROID) ---------------- */
 
 pc.onicecandidate = (event) => {
   if (event.candidate) {
-    db.ref(`events/${eventId}/viewerCandidates`).push({
-      sdpMid: event.candidate.sdpMid,
-      sdpMLineIndex: event.candidate.sdpMLineIndex,
-      candidate: event.candidate.candidate
-    });
+    db.ref(`events/${eventId}/viewerCandidates`)
+      .push(event.candidate.toJSON());
   }
 };
 
-/* ---------------- RECEIVE ANDROID ICE ---------------- */
+/* ---------------- RECEIVE OFFER (ANDROID → WEB) ---------------- */
 
-db.ref(`events/${eventId}/candidates`).on("child_added", snapshot => {
-  const c = snapshot.val();
-  if (c) {
-    pc.addIceCandidate(new RTCIceCandidate(c));
-  }
+db.ref(`events/${eventId}/offer`).on("value", async (snapshot) => {
+  if (!snapshot.exists()) return;
+
+  const offer = snapshot.val();
+  await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+
+  await db.ref(`events/${eventId}/answer`).set(answer);
 });
+
+/* ---------------- RECEIVE ICE (ANDROID → WEB) ---------------- */
+
+db.ref(`events/${eventId}/hostCandidates`)
+  .on("child_added", (snapshot) => {
+    const candidate = snapshot.val();
+    if (candidate) {
+      pc.addIceCandidate(new RTCIceCandidate(candidate));
+    }
+  });
 </script>
 
 </body>
