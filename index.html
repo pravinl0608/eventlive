@@ -1,53 +1,109 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>EventLive Viewer</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8" />
+  <title>EventLive – Live Stream</title>
   <style>
     body {
-      margin: 0;
+      background: #000;
+      color: #fff;
       font-family: Arial, sans-serif;
-      background: #020617;
-      color: white;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
       text-align: center;
+      margin: 0;
+      padding: 0;
     }
-    .live {
-      color: red;
-      font-weight: bold;
-      margin-bottom: 10px;
-    }
-    .box {
-      border: 1px solid #334155;
-      padding: 20px;
-      border-radius: 10px;
-      width: 80%;
-      max-width: 400px;
+    video {
+      width: 100%;
+      max-width: 720px;
+      margin-top: 20px;
+      background: #000;
     }
   </style>
 </head>
-
 <body>
 
-  <h1>EventLive</h1>
-  <div class="live">🔴 LIVE EVENT</div>
+<h2>🔴 LIVE EVENT</h2>
+<video id="remoteVideo" autoplay playsinline controls></video>
 
-  <div class="box">
-    <h3>Event ID</h3>
-    <p id="eventId">Loading...</p>
-  </div>
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js"></script>
 
-  <script>
-    const params = new URLSearchParams(window.location.search);
-    const eventId = params.get("id");
-    document.getElementById("eventId").innerText =
-      eventId ? eventId : "No Event ID Found";
-  </script>
+<script>
+/* 🔥 REPLACE WITH YOUR FIREBASE WEB CONFIG */
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "XXXXXX",
+  appId: "XXXXXX"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+/* ---------------- EVENT ID ---------------- */
+
+const params = new URLSearchParams(window.location.search);
+const eventId = params.get("id");
+
+if (!eventId) {
+  alert("No event ID found");
+  throw new Error("Missing event ID");
+}
+
+/* ---------------- WEBRTC ---------------- */
+
+const pc = new RTCPeerConnection({
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+});
+
+const video = document.getElementById("remoteVideo");
+
+pc.ontrack = (event) => {
+  video.srcObject = event.streams[0];
+};
+
+/* ---------------- RECEIVE OFFER ---------------- */
+
+db.ref(`events/${eventId}/offer`).once("value").then(snapshot => {
+  const offer = snapshot.val();
+  if (!offer) {
+    alert("Event is not live yet");
+    return;
+  }
+
+  pc.setRemoteDescription(new RTCSessionDescription(offer))
+    .then(() => pc.createAnswer())
+    .then(answer => {
+      pc.setLocalDescription(answer);
+      return db.ref(`events/${eventId}/answer`).set(answer);
+    });
+});
+
+/* ---------------- SEND ICE TO ANDROID ---------------- */
+
+pc.onicecandidate = (event) => {
+  if (event.candidate) {
+    db.ref(`events/${eventId}/viewerCandidates`).push({
+      sdpMid: event.candidate.sdpMid,
+      sdpMLineIndex: event.candidate.sdpMLineIndex,
+      candidate: event.candidate.candidate
+    });
+  }
+};
+
+/* ---------------- RECEIVE ANDROID ICE ---------------- */
+
+db.ref(`events/${eventId}/candidates`).on("child_added", snapshot => {
+  const c = snapshot.val();
+  if (c) {
+    pc.addIceCandidate(new RTCIceCandidate(c));
+  }
+});
+</script>
 
 </body>
 </html>
